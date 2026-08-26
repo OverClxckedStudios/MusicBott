@@ -12,4 +12,13 @@ export const GUILD_CONFIG_DEFAULTS = {
     dmOnClose: true,
     disabledCommands: {},
     disabledCategories: {},
+
+    // Ticket moderation tiers.
+    ticketTier1RoleId: '1541110583108173905',
+    ticketTier2RoleId: '1541110042307076206',
+
+    // Category where closed tickets are redirected.
+    // Despite the historical "channel" wording, Discord ticket channels
+    // can only be moved under a category.
+    ticketClosedRedirectChannelId: null,
 };

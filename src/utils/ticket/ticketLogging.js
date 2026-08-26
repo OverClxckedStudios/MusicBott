@@ -86,6 +86,8 @@ function getLogChannelForEventType(config, eventType) {
     case 'delete':
     case 'claim':
     case 'unclaim':
+    case 'reopen':
+    case 'rename':
     case 'priority':
     case 'pin':
     case 'unpin':
@@ -103,6 +105,8 @@ const TICKET_EVENT_STYLES = {
   delete: { color: 0x8b0000, title: 'Ticket Deleted' },
   claim: { color: 0x5865F2, title: 'Ticket Claimed' },
   unclaim: { color: 0xFAA61A, title: 'Ticket Unclaimed' },
+  reopen: { color: 0x57F287, title: 'Ticket Reopened' },
+  rename: { color: 0x3498DB, title: 'Ticket Renamed' },
   priority: { color: 0x9b59b6, title: 'Priority Updated' },
   transcript: { color: 0x57F287, title: 'Transcript Generated' },
   feedback: { color: 0x57F287, title: 'Feedback Received' },
@@ -160,15 +164,36 @@ async function createTicketLogEmbed(guild, event) {
 
     case 'claim':
     case 'unclaim':
+    case 'reopen':
       author = await resolveUserAuthor(guild.client, event.executorId);
       inlineFields = [
         { name: 'Ticket', value: ticketRef, inline: true },
         {
-          name: event.type === 'claim' ? 'Claimed by' : 'Unclaimed by',
+          name:
+            event.type === 'claim'
+              ? 'Claimed by'
+              : event.type === 'reopen'
+                ? 'Reopened by'
+                : 'Unclaimed by',
           value: executorMention || 'Unknown',
           inline: true,
         },
       ];
+      break;
+
+    case 'rename':
+      author = await resolveUserAuthor(guild.client, event.executorId);
+      inlineFields = [
+        { name: 'Ticket', value: ticketRef, inline: true },
+        { name: 'Renamed by', value: executorMention || 'Unknown', inline: true },
+      ];
+      if (event.metadata?.oldName || event.metadata?.newName) {
+        fields.push({
+          name: 'Name Change',
+          value: `\`${String(event.metadata.oldName || 'Unknown').slice(0, 80)}\` → \`${String(event.metadata.newName || 'Unknown').slice(0, 80)}\``,
+          inline: false,
+        });
+      }
       break;
 
     case 'priority': {

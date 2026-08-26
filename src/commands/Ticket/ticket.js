@@ -7,12 +7,15 @@ import { logger } from '../../utils/logger.js';
 import { handleInteractionError, replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 
 import ticketConfig from './modules/ticket_dashboard.js';
+import { getTicketPermissionContext } from '../../utils/ticket/ticketPermissions.js';
+import { renameTicketChannel } from './ticket_rename.js';
+import { configureClosedTicketRedirect } from './ticket_closed_redir.js';
 
 export default {
     data: new SlashCommandBuilder()
         .setName("ticket")
         .setDescription("Manages the server's ticket system.")
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+        .setDefaultMemberPermissions(null)
         .addSubcommand((subcommand) =>
             subcommand
                 .setName("setup")
@@ -88,6 +91,40 @@ export default {
         )
         .addSubcommand((subcommand) =>
             subcommand
+                .setName("rename")
+                .setDescription("Rename the current ticket.")
+                .addStringOption((option) =>
+                    option
+                        .setName("name")
+                        .setDescription("The new ticket channel name.")
+                        .setRequired(true)
+                        .setMaxLength(90),
+                ),
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("redirconfig")
+                .setDescription("Configure the category where closed tickets are moved.")
+                .addChannelOption((option) =>
+                    option
+                        .setName("category")
+                        .setDescription("The category to move closed tickets into.")
+                        .addChannelTypes(ChannelType.GuildCategory)
+                        .setRequired(true),
+                ),
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("reopen")
+                .setDescription("Reopen the current closed ticket."),
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("unclaim")
+                .setDescription("Unclaim the current ticket."),
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
                 .setName("dashboard")
                 .setDescription("Open the interactive ticket system dashboard"),
         ),
@@ -99,26 +136,113 @@ export default {
             return;
         }
 
-        if (
-            !interaction.member.permissions.has(
-                PermissionFlagsBits.ManageChannels,
-            )
-        ) {
-            logger.warn('Ticket command permission denied', {
-                userId: interaction.user.id,
-                guildId: interaction.guildId,
-                commandName: 'ticket'
-            });
-            return await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'You need the `Manage Channels` permission for this action.' });
-        }
-
         const subcommand = interaction.options.getSubcommand();
 
+        if (subcommand === "rename") {
+            const permissionContext = await getTicketPermissionContext({ client, interaction });
+            if (!permissionContext.ticketData) {
+                return await replyUserError(interaction, {
+                    type: ErrorTypes.VALIDATION,
+                    message: 'This command can only be used inside a valid ticket channel.',
+                });
+            }
+            if (!permissionContext.canRenameTicket) {
+                return await replyUserError(interaction, {
+                    type: ErrorTypes.PERMISSION,
+                    message: 'You need the Tier 1 ticket moderation role (or Tier 2) to rename tickets.',
+                });
+            }
+
+            const newName = interaction.options.getString("name", true);
+            const result = await renameTicketChannel(interaction, newName);
+            return await InteractionHelper.safeEditReply(interaction, {
+                embeds: [
+                    successEmbed(
+                        "Ticket Renamed",
+                        `Renamed this ticket from **${result.oldName}** to **${result.newName}**.`,
+                    ),
+                ],
+            });
+        }
+
+        if (subcommand === "redirconfig") {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+                return await replyUserError(interaction, {
+                    type: ErrorTypes.PERMISSION,
+                    message: 'You need the `Manage Server` permission to configure closed-ticket redirection.',
+                });
+            }
+
+            const category = interaction.options.getChannel("category", true);
+            const configured = await configureClosedTicketRedirect(interaction, client, category);
+            return await InteractionHelper.safeEditReply(interaction, {
+                embeds: [
+                    successEmbed(
+                        "Closed Ticket Redirect Updated",
+                        `Closed tickets will now be moved into **${configured.name}**.`,
+                    ),
+                ],
+            });
+        }
+
+        if (subcommand === "reopen" || subcommand === "unclaim") {
+            const permissionContext = await getTicketPermissionContext({ client, interaction });
+            if (!permissionContext.ticketData) {
+                return await replyUserError(interaction, {
+                    type: ErrorTypes.VALIDATION,
+                    message: 'This command can only be used inside a valid ticket channel.',
+                });
+            }
+
+            if (subcommand === "reopen") {
+                if (!permissionContext.canReopenTicket) {
+                    return await replyUserError(interaction, {
+                        type: ErrorTypes.PERMISSION,
+                        message: 'You need the Tier 1 ticket moderation role (or Tier 2) to reopen tickets.',
+                    });
+                }
+
+                const { reopenTicket } = await import('../../services/ticket.js');
+                const result = await reopenTicket(interaction.channel, interaction.member);
+                return await InteractionHelper.safeEditReply(interaction, {
+                    embeds: [
+                        successEmbed(
+                            "Ticket Reopened",
+                            result.openCategoryMoveFailed
+                                ? 'This ticket has been reopened, but it could not be moved to the configured open category.'
+                                : 'This ticket has been reopened successfully.',
+                        ),
+                    ],
+                });
+            }
+
+            if (!permissionContext.canUnclaimTicket) {
+                return await replyUserError(interaction, {
+                    type: ErrorTypes.PERMISSION,
+                    message: 'You need the Tier 1 ticket moderation role (or Tier 2) to unclaim tickets.',
+                });
+            }
+
+            const { unclaimTicket } = await import('../../services/ticket.js');
+            await unclaimTicket(interaction.channel, interaction.member);
+            return await InteractionHelper.safeEditReply(interaction, {
+                embeds: [
+                    successEmbed("Ticket Unclaimed", "This ticket has been unclaimed successfully."),
+                ],
+            });
+        }
+
         if (subcommand === "dashboard") {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+                return await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'You need the `Manage Channels` permission for this action.' });
+            }
             return ticketConfig.execute(interaction, config, client);
         }
 
         if (subcommand === "setup") {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+                return await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'You need the `Manage Channels` permission for this action.' });
+            }
             const existingConfig = await getGuildConfig(client, interaction.guildId);
             if (existingConfig?.ticketPanelChannelId) {
                 return await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: `This server already has a ticket system set up (panel in <#${existingConfig.ticketPanelChannelId}>).\n\nOnly one ticket system is supported per server. Use \`/ticket dashboard\` to edit or update the existing setup, or select **Delete System** from the dashboard to remove it and start fresh.` });

@@ -132,7 +132,10 @@ function buildDashboardEmbed(config, guild, panelStatus = null, ticketStats = nu
     const openCategoryChannel = config.ticketCategoryId ? guild.channels.cache.get(config.ticketCategoryId) : null;
     const openCategory = openCategoryChannel ? openCategoryChannel.toString() : '`Not set`';
     
-    const closedCategoryChannel = config.ticketClosedCategoryId ? guild.channels.cache.get(config.ticketClosedCategoryId) : null;
+    const closedCategoryChannel =
+        (config.ticketClosedRedirectChannelId && guild.channels.cache.get(config.ticketClosedRedirectChannelId)) ||
+        (config.ticketClosedCategoryId && guild.channels.cache.get(config.ticketClosedCategoryId)) ||
+        null;
     const closedCategory = closedCategoryChannel ? closedCategoryChannel.toString() : '`Not set`';
 
     const rawMsg = config.ticketPanelMessage || 'Click the button below to create a support ticket.';

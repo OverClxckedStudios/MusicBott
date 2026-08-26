@@ -30,7 +30,10 @@ export default {
         }
 
         if (!permissionContext.canCloseTicket) {
-            return await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'You need the `Manage Channels` permission, the configured `Ticket Staff Role`, or be the ticket creator to close this ticket.' });
+            return await replyUserError(interaction, {
+                type: ErrorTypes.PERMISSION,
+                message: 'You need the Tier 1 ticket moderation role (or Tier 2) to close tickets.',
+            });
         }
 
         const reason =

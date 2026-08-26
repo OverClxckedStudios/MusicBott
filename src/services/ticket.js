@@ -242,7 +242,12 @@ export async function closeTicket(channel, closer, reason = 'No reason provided'
     
     const config = await getGuildConfig(channel.client, channel.guild.id);
     const dmOnClose = config.dmOnClose !== false;
-    const closedCategoryId = config.ticketClosedCategoryId || null;
+    // New redirect setting takes precedence; ticketClosedCategoryId remains
+    // supported for backwards compatibility with existing installations.
+    const closedCategoryId =
+      config.ticketClosedRedirectChannelId ||
+      config.ticketClosedCategoryId ||
+      null;
     let movedToClosedCategory = false;
     
     ticketData.status = 'closed';
@@ -603,6 +608,22 @@ export async function reopenTicket(channel, reopener) {
       await channel.send({ embeds: [reopenEmbed] });
     }
     
+    await logTicketEvent({
+      client: channel.client,
+      guildId: channel.guild.id,
+      event: {
+        type: 'reopen',
+        ticketId: channel.id,
+        ticketNumber: ticketData.id,
+        userId: ticketData.userId,
+        executorId: reopener.id,
+        metadata: {
+          reopenedAt: new Date().toISOString(),
+          movedToOpenCategory,
+        },
+      },
+    });
+
     return { ticketData, movedToOpenCategory, openCategoryMoveFailed };
     
   } catch (error) {
@@ -868,17 +889,11 @@ export async function unclaimTicket(channel, unclaimer) {
         { channelId: channel.id, operation: 'unclaimTicket' }
       );
     }
-    
-    if (ticketData.claimedBy !== unclaimer.id && !unclaimer.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      ticketUserError(
-        'Cannot unclaim ticket',
-        'You can only unclaim your own tickets or need Manage Channels permission.',
-        ErrorTypes.PERMISSION,
-        { channelId: channel.id, operation: 'unclaimTicket' }
-      );
-    }
-    
-    const previousClaimer = ticketData.claimedBy;
+    // Authorization is enforced by the interaction/command layer using the
+    // Tier 1/Tier 2 ticket moderation roles. The service only performs the
+    // state transition.
+
+const previousClaimer = ticketData.claimedBy;
     ticketData.claimedBy = null;
     ticketData.claimedAt = null;
     

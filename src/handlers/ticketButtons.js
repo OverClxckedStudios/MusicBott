@@ -31,8 +31,14 @@ async function ensureGuildContext(interaction) {
   return false;
 }
 
-async function assertTicketPermission(interaction, client, actionLabel, options = {}, timeoutMs = 2500) {
-  const { allowTicketCreator = false } = options;
+async function assertTicketPermission(
+  interaction,
+  client,
+  actionLabel,
+  options = {},
+  timeoutMs = 2500,
+) {
+  const { permissionKey = 'canManageTicket' } = options;
 
   let context;
   try {
@@ -64,11 +70,20 @@ async function assertTicketPermission(interaction, client, actionLabel, options 
     );
   }
 
-  const allowed = allowTicketCreator ? context.canCloseTicket : context.canManageTicket;
-  if (!allowed) {
-    const permissionMessage = allowTicketCreator
-      ? 'You must have **Manage Channels**, the configured **Ticket Staff Role**, or be the **ticket creator**.'
-      : 'You must have **Manage Channels** or the configured **Ticket Staff Role**.';
+  if (!context[permissionKey]) {
+    let permissionMessage = 'You do not have permission to perform this ticket action.';
+    if (permissionKey === 'canDeleteTicket') {
+      permissionMessage = 'Only the Tier 2 ticket moderation role can delete tickets.';
+    } else if (permissionKey === 'canRenameTicket') {
+      permissionMessage = 'Only the Tier 1 or Tier 2 ticket moderation role can rename tickets.';
+    } else if (permissionKey === 'canCloseTicket') {
+      permissionMessage = 'Only the Tier 1 or Tier 2 ticket moderation role can close tickets.';
+    } else if (permissionKey === 'canReopenTicket') {
+      permissionMessage = 'Only the Tier 1 or Tier 2 ticket moderation role can reopen tickets.';
+    } else if (permissionKey === 'canUnclaimTicket') {
+      permissionMessage = 'Only the Tier 1 or Tier 2 ticket moderation role can unclaim tickets.';
+    }
+
     throw createError(
       'Ticket permission denied',
       ErrorTypes.PERMISSION,
@@ -187,7 +202,7 @@ const closeTicketHandler = {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
-      await assertTicketPermission(interaction, client, 'close this ticket', { allowTicketCreator: true }, 2000);
+      await assertTicketPermission(interaction, client, 'close this ticket', { permissionKey: 'canCloseTicket' }, 2000);
 
       const modal = new ModalBuilder()
         .setCustomId('ticket_close_modal')
@@ -221,7 +236,7 @@ const closeTicketModalHandler = {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
-      await assertTicketPermission(interaction, client, 'close this ticket', { allowTicketCreator: true }, 2000);
+      await assertTicketPermission(interaction, client, 'close this ticket', { permissionKey: 'canCloseTicket' }, 2000);
 
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
@@ -248,7 +263,7 @@ const claimTicketHandler = {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
-      await assertTicketPermission(interaction, client, 'claim tickets', {}, 2000);
+      await assertTicketPermission(interaction, client, 'claim tickets', { permissionKey: 'canClaimTicket' }, 2000);
 
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
@@ -272,7 +287,7 @@ const priorityTicketHandler = {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
-      await assertTicketPermission(interaction, client, 'change ticket priority', {}, 2000);
+      await assertTicketPermission(interaction, client, 'change ticket priority', { permissionKey: 'canChangePriority' }, 2000);
 
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
@@ -302,7 +317,7 @@ const pinTicketHandler = {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
-      await assertTicketPermission(interaction, client, 'pin tickets', {}, 2000);
+      await assertTicketPermission(interaction, client, 'pin tickets', { permissionKey: 'canPinTicket' }, 2000);
 
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
@@ -398,7 +413,7 @@ const unclaimTicketHandler = {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
-      await assertTicketPermission(interaction, client, 'unclaim tickets', {}, 2000);
+      await assertTicketPermission(interaction, client, 'unclaim tickets', { permissionKey: 'canUnclaimTicket' }, 2000);
 
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
@@ -423,7 +438,7 @@ const reopenTicketHandler = {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
-      await assertTicketPermission(interaction, client, 'reopen tickets', {}, 2000);
+      await assertTicketPermission(interaction, client, 'reopen tickets', { permissionKey: 'canReopenTicket' }, 2000);
 
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
@@ -452,7 +467,7 @@ const deleteTicketHandler = {
     try {
       if (!(await ensureGuildContext(interaction))) return;
 
-      await assertTicketPermission(interaction, client, 'delete tickets', {}, 2000);
+      await assertTicketPermission(interaction, client, 'delete tickets', { permissionKey: 'canDeleteTicket' }, 2000);
 
       const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferSuccess) return;
